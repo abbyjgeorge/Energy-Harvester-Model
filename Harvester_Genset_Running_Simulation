@@ -1,0 +1,190 @@
+%Triple Pendulum Equations of Motion by ABBY J GEORGE / Energy Harvester
+%Project
+%Notes: 
+% Average Upper arm lengths = 236 to 245 mm ; Average Fore arm lengths = 247mm - 251mm;
+% Average Upper arm weights = 2.07 kg - 2.67 kg ; Average Fore arm weights = 1.24 - 1.66 kg.
+% OR USE Body weight %: - U.A. = 3.075%, L.A = 1.72%, H = 0.575%, L.A+H = 2.295
+% ==> [2.63 1.2 2.07] for 70kg
+
+clear
+
+% ###MODEL PARAMETERS
+g = 9.81;
+% Damping constants (kg.m.s)
+c1 = 1; c2 = 1; c_p = 0.00001; Cg = 0.00001;
+% Excitation frequency (1 Hz = 2*pi rad/s)
+f1 = 2;
+% Gear Ratio
+Nrg = 120; Npg = 24; GR = Nrg/Npg;
+% Generator Constants
+Kt = 0.0153; 
+Ke = 0.0163*0.9;
+Lg = 0.63;
+Rg = 0.9; 
+Rl = 15;
+Rt = Rg+Rl;
+% Simulation Time (s), Resolution
+Time = 5; Fine = 2000;
+
+% ###MASSES (kg)
+% Pendula
+m1 = 2.63; m2 = 2.07; m3 = 0.18;
+% Ring & Pinion gears
+m_rg = vpa(0.0110986753); m_pg = vpa(0.000209758072);
+% Generator
+m_g = vpa(0.042753358);
+
+% ###LENGTHS (m)
+% Pendulum (1,2,3)
+l1 = 0.24; l2 = 0.25; l3 = 0.025;
+% Ring & Pinion gears, Generator
+r_out_rg = vpa(0.0507492); r_in_rg = vpa(0.0312166); r_pg = vpa(0.00635);r_g = vpa(0.0381);
+% Mass centers of the pendulum
+e1 = l1/2; e2 = l2/2; e3 = 4*l3/(3*pi);
+% Radii of cylindrical upper and lower arms
+r1 = 0.05; r2 = 0.035;
+
+% ###INERTIAS
+% I1,I2 --> M.o.I for cylinder along edge : (M*R^2)/4+(M*L^2)/3
+% Ip = MoI of Pendulum: 0.5*M*R^2
+% Irg = MoI of Ring Gear: 0.5*M*(R1^2 - R2^2)
+% Ipg = MoI of Pinion Gear: 0.5*M*R^2
+% Pendulum (1,2,p)
+I1 = vpa((m1*r1^2)/4 + (m1*l1^2)/3); 
+I2 = vpa((m2*r2^2)/4 + (m2*l2^2)/3);
+Ip = vpa((m3*l3^2)/2);
+% Gears (Ring, Pinion)
+Irg = vpa(0.5*m_rg*(r_out_rg^2 + r_in_rg^2));
+Ipg = vpa(0.5*m_pg*(r_pg^2));
+% Generator
+Jg = vpa(0.5*m_g*(r_g^2));  
+
+% Pendulum Inertia coupled to DC Generator thru gear train
+I3 = vpa(Ip + Irg + ((Nrg/Npg)^2)*(Ipg + Jg)); 
+
+% Damping effect coupled through gear train
+c3 = c_p + ((Nrg/Npg)^2)*Cg;
+
+U1 = m1*g*e1 + (m2 + m3)*g*l1;
+U2 = m2*g*e2 + m3*g*l2;
+U3 = m3*g*e3;
+
+A1 = I1 + (e1^2) * m1 + (l1^2) * (m2 + m3);
+A2 = I2 + (e2^2) * m2 + (l2^2) * m3;
+A3 = I3 + (e3^2) * m3;
+
+B12 = m2*e2*l1 + m3*l1*l2;
+B13 = m3*e3*l1;
+B23 = m3*e3*l2;
+
+tVal = linspace(0,Time,Fine); 
+
+% Experimental
+load('exp_power')
+TimeExp = 5; % Seconds
+FineExp = TimeExp/length(power);
+tValExp = (0:FineExp:TimeExp);
+
+syms x(t) y(t) z(t) q(t)
+A = [x;y;z;q];
+
+M = [A1 B12*cos(x-y) B13*cos(x-z) 0; 
+B12*cos(x-y) A2 B23*cos(y-z) 0;
+B13*cos(x-z) B23*cos(y-z) A3 0;
+0 0 0 Lg];
+
+N = [0 B12*sin(x-y) B13*sin(x-z) 0;
+-B12*sin(x-y) 0 B23*sin(y-z) 0;
+-B13*sin(x-z) -B23*sin(y-z) 0 0;
+0 0 0 0];
+
+C = [c1+c2 -c2 0 0;
+    -c2 c2+c3 -c3 0;
+    0 -c3 c3 -Kt*(Npg/Nrg);
+    0 0 Ke*(Nrg/Npg) Rt];
+
+p = [U1*sin(x);U2*sin(y);U3*sin(z);0];
+
+% ARM INPUTS (WALKING)
+% 1 Hz = 2*pi rad/s  
+% Max Swing Angle for Upper & Lower Arm = 25 (deg)
+deg = pi/180; rad = 180/pi;                 % conversions
+
+q1 = (m1*e1*sin(25*deg) + m2*(l1*sin(25*deg)+e2*sin((90+25)*deg))+m3*(l1*sin(25*deg)+l2*sin((90+25)*deg)))*g;
+q2 = (m2*e2 + m3*l2)*g;
+Me1 = q1*sin(2*pi*f1*t);
+Me2 = q2;
+
+Fe = [Me1;Me2;0;0];
+
+odes = (diff(A,t,2) == M\(Fe - p - C*diff(A,t) - N*(diff(A,t).^2)));   % Triple Pendulum ODE
+
+[V,S] = odeToVectorField(odes);                                       % Second Order to First Order
+MV = matlabFunction(V,'Vars',{'t','Y'});
+
+% y0 = Initial Values. S = [y; Dy; x; Dx; z; Dz; q; Dq]
+
+options = odeset('RelTol', 1e-10, 'AbsTol', 1e-12);
+
+y0 = [(90*deg) 0 0 0 0 0 0 0];                     
+sol = ode45(MV,[0,Time],y0,options);
+yVal = deval(sol,tVal,[3 1 5 4 2 6 7 8]);
+
+figure('Name','Harvester')
+% subplot(4,2,[1,2])
+% fplot(Me1,[0 Time],'k--')
+% hold on
+% fplot(Me2,[0 Time],'b--')
+% legend('Me1','Me2')
+% ylabel('Torque (Nm)')
+% grid;
+
+subplot(3,1,1)
+yyaxis left
+plot(tVal,(yVal(1,:)),'k-',tVal,(yVal(2,:)),'b-',tVal,(yVal(3,:)),'r--')
+ylabel({'Angular Rotation';'(rad)'})
+yyaxis right
+fplot(Me1,[0 Time],'k--')
+hold on
+fplot(Me2,[0 Time],'b--')
+legend('Upper Arm, \theta_{1}','Lower Arm, \theta_{2}','Pendulum, \theta_{3}','Me1','Me2')
+ylabel('Torque (Nm)')
+grid;
+
+% subplot(4,1,2)
+% plot(tVal,yVal(4,:),'k-',tVal,yVal(5,:),'b-',tVal,yVal(6,:),'r--')
+% legend('Upper Arm, $\dot{\theta_{1}}$','Lower Arm, $\dot{\theta_{2}}$','Pendulum, $\dot{\theta_{3}}$','interpreter','latex')
+% ylabel({'Angular Velocity';'(rad/s)'})
+% grid;
+% %Maximum Power output in Watts -> T * w // T = I3 * acc * Dz
+% %Energy Harvested = Average power * Time
+
+% subplot(3,1,3)
+% grid on;
+acc = abs([0 diff(yVal(6,:))]);             % Differentiating Proof mass Velocity
+m_Power_mW = I3 * acc .* abs(yVal(6,:))*1000;    % Power in mW
+% plot(tVal,mPower,'b-')
+% xlabel('Time (s)');
+% ylabel('Power (mW)');
+m_Energy_mJ= double(sum(m_Power_mW)*(1/length(m_Power_mW)))*Time;
+
+subplot(3,1,3)                                              % Power = I^2 * R
+e_Power_mW = (abs(yVal(8,:)).*(abs(yVal(8,:))))*(Rg + Rl)*1000;
+e_Energy_mJ = double(sum(e_Power_mW)*(1/length(e_Power_mW)))*Time
+plot(tVal,e_Power_mW,'r-',tValExp,[0 power],'r--')
+legend('Simulated','Experimental')
+ylabel('Power (mW)');
+xlabel('Time (s)');
+
+subplot(3,1,2)
+grid ON;
+Volts = abs(yVal(8,:).*(Rg+Rl))*30; % V = I*R in Volts
+Current = abs(yVal(8,:)*1000)*(1/30); % Current in mA
+plot(tVal,Volts,'r--')
+ylabel('Voltage (V)');
+%axis([0 5 0 10]);
+yyaxis right
+plot(tVal,Current,'b-')
+ylabel('Current (mA)');
+axis([0 5 0 0.5]);
+legend('Voltage','Current')
