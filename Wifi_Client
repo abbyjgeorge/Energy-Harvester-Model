@@ -1,0 +1,61 @@
+close;
+clear;
+
+pause(2)
+client = tcpclient('192.168.137.74', 80);
+pause(6)
+data = read(client);
+
+% s1 = serial('COM3');
+% fopen(s1);
+% data2 = fscanf(s1);
+
+% Sorting data into voltage and current
+
+Voltage = zeros;
+Current = zeros;
+Power = zeros;
+
+j = 0; m = 0;
+
+for i = 1:2:length(data)
+    j = j+1;
+Voltage(1,j)= data(i); 
+end
+
+for k = 2:2:length(data)
+m = m+1;
+Current(1,m)=data(k);
+end
+
+Time = 5; % Seconds
+Fine = Time/length(Voltage);
+tVal = (0:Fine:Time);
+
+% conversion
+
+V = 0.1*Voltage; % Voltage conversion from Arduino (V)
+I = 0.1*Current; % Current conversion from Arduino (A), I = 0.01*I;
+power = V .*I; % Power in mW
+
+
+subplot(2,1,1)
+xlabel('Time (s)');
+yyaxis left
+plot(tVal,[0 V],'r--')
+ylabel('Voltage (V)');
+%axis([0 5 0 10]);
+yyaxis right
+plot(tVal,[0 I],'b-')
+ylabel('Current (mA)');
+%axis([0 5 0 10]);
+legend('Voltage','Current');
+grid;
+
+subplot(2,1,2)
+plot(tVal,[0 power],'r-')
+xlabel('Time (s)');
+ylabel('Power (mW)');
+% axis([0 5 0 1]);
+grid;
+E_Energy_mJ = double(sum(power)*(1/length(tVal)))*Time % Energy in mJ
